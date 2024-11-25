@@ -67,7 +67,7 @@ async function run() {
 
     const SignUpUserCollection = client.db('MedConnect').collection('SignUpUsers')
     const DoctorsCollection = client.db('MedConnect').collection('Doctors');
-    // const BlogCollection = client.db('MedConnect').collection('Blog')
+    const BlogCollection = client.db('MedConnect').collection('Blog')
     // const AppointmentCollection = client.db('MedConnect').collection('Appointment')
 
 
@@ -166,7 +166,7 @@ async function run() {
     app.post('/doctors', async (req, res) => {
       try {
         const {
-          userEmail, fullName, dob, gender, nationality, medicalRegistration,
+          userEmail,userImage, fullName, dob, gender, nationality, medicalRegistration,
           specialization, experience, email, visit, phone, highestEducation,
           medicalSchool, graduationYear, medicalDegree, motivation, careerGoals,
           hospitalClinicName, position, duration, availableDays, resume,
@@ -180,6 +180,7 @@ async function run() {
 
         const formData = {
           userEmail,
+          userImage,
           fullName,
           dob,
           gender,
@@ -256,7 +257,74 @@ async function run() {
       res.send(result);
     });
 
-  
+
+
+
+    
+
+        // Property information save
+        app.post('/blog', verifyWebToken, async (req, res) => {
+          try {
+              const {
+                  userEmail,
+                  userImage,
+                  userName,
+                  title,
+                  description,
+                  blogCategory,
+                  images,
+                  views,
+                  createdDate,
+                  createdTime,
+              } = req.body;
+
+              // Construct the formData object
+              const formData = {
+                  userEmail,
+                  userImage,
+                  userName,
+                  title,
+                  description,
+                  blogCategory,
+                  images,
+                  views,
+                  createdDate,
+                  createdTime,
+              };
+
+              // Insert into MongoDB
+              const result = await BlogCollection.insertOne(formData);
+
+              res.status(200).json({ message: 'Property added successfully', result });
+          } catch (error) {
+              console.error('Error handling form submission:', error);
+              res.status(500).json({ message: 'Error submitting form', error: error.message });
+          }
+      });
+
+
+
+
+      // Get the Doctors user data
+      app.get('/blog', async (req, res) => {
+          try {
+              const result = await BlogCollection.find().toArray();
+              res.status(200).send(result); // Send a success response with the fetched data
+          } catch (error) {
+              console.error("Error fetching doctors:", error);
+              res.status(500).send({ message: "Failed to fetch doctors", error });
+          }
+      });
+
+      
+
+      app.get('/blog/:id', async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await BlogCollection.findOne(query);
+        res.send(result);
+      });
+
 
 
 
