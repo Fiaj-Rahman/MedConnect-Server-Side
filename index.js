@@ -4,9 +4,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const SSLCommerzPayment = require('sslcommerz-lts');
 const bcrypt = require('bcrypt');
 const saltRounds = 10; // You can adjust the salt rounds based on your security preference
-
 
 
 const app = express();
@@ -22,6 +22,10 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser())
 
+
+const store_id = process.env.STORE_ID
+const store_passwd = process.env.STORE_PASSWORD
+const is_live = false //true for live, false for sandbox
 
 // JWT Verify MiddleWare 
 
@@ -59,6 +63,12 @@ const client = new MongoClient(uri, {
   }
 });
 
+
+
+
+
+
+
 // Connect to the database and set up the collection
 async function run() {
   try {
@@ -68,7 +78,7 @@ async function run() {
     const SignUpUserCollection = client.db('MedConnect').collection('SignUpUsers')
     const DoctorsCollection = client.db('MedConnect').collection('Doctors');
     const BlogCollection = client.db('MedConnect').collection('Blog')
-    // const AppointmentCollection = client.db('MedConnect').collection('Appointment')
+    const AppointmentCollection = client.db('MedConnect').collection('Appointment')
 
 
 
@@ -166,7 +176,7 @@ async function run() {
     app.post('/doctors', async (req, res) => {
       try {
         const {
-          userEmail,userImage, fullName, dob, gender, nationality, medicalRegistration,
+          userEmail, userImage, fullName, dob, gender, nationality, medicalRegistration,
           specialization, experience, email, visit, phone, highestEducation,
           medicalSchool, graduationYear, medicalDegree, motivation, careerGoals,
           hospitalClinicName, position, duration, availableDays, resume,
@@ -260,70 +270,228 @@ async function run() {
 
 
 
+
+
+    // Property information save
+    app.post('/blog', verifyWebToken, async (req, res) => {
+      try {
+        const {
+          userEmail,
+          userImage,
+          userName,
+          title,
+          description,
+          blogCategory,
+          images,
+          views,
+          createdDate,
+          createdTime,
+        } = req.body;
+
+        // Construct the formData object
+        const formData = {
+          userEmail,
+          userImage,
+          userName,
+          title,
+          description,
+          blogCategory,
+          images,
+          views,
+          createdDate,
+          createdTime,
+        };
+
+        // Insert into MongoDB
+        const result = await BlogCollection.insertOne(formData);
+
+        res.status(200).json({ message: 'Property added successfully', result });
+      } catch (error) {
+        console.error('Error handling form submission:', error);
+        res.status(500).json({ message: 'Error submitting form', error: error.message });
+      }
+    });
+
+
+
+
+    // Get the Doctors user data
+    app.get('/blog', async (req, res) => {
+      try {
+        const result = await BlogCollection.find().toArray();
+        res.status(200).send(result); // Send a success response with the fetched data
+      } catch (error) {
+        console.error("Error fetching doctors:", error);
+        res.status(500).send({ message: "Failed to fetch doctors", error });
+      }
+    });
+
+
+
+    app.get('/blog/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await BlogCollection.findOne(query);
+      res.send(result);
+    });
+
+
+   
+
+
+    // Backend: Delete Blog Post (DELETE)
+    app.delete('/blogs/:id', async (req, res) => {
+      try {
+        const { id } = req.params; // Extract the blog post ID from URL parameters
+
+        // Delete the blog post from the database
+        const result = await BlogCollection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount > 0) {
+          res.status(200).send({ message: 'Blog post deleted successfully' });
+        } else {
+          res.status(404).send({ message: 'Blog post not found' });
+        }
+      } catch (error) {
+        res.status(500).send({ message: 'An error occurred while deleting the blog post.', error });
+      }
+    });
+
+
+
+
+
+
     
 
-        // Property information save
-        app.post('/blog', verifyWebToken, async (req, res) => {
-          try {
-              const {
-                  userEmail,
-                  userImage,
-                  userName,
-                  title,
-                  description,
-                  blogCategory,
-                  images,
-                  views,
-                  createdDate,
-                  createdTime,
-              } = req.body;
-
-              // Construct the formData object
-              const formData = {
-                  userEmail,
-                  userImage,
-                  userName,
-                  title,
-                  description,
-                  blogCategory,
-                  images,
-                  views,
-                  createdDate,
-                  createdTime,
-              };
-
-              // Insert into MongoDB
-              const result = await BlogCollection.insertOne(formData);
-
-              res.status(200).json({ message: 'Property added successfully', result });
-          } catch (error) {
-              console.error('Error handling form submission:', error);
-              res.status(500).json({ message: 'Error submitting form', error: error.message });
-          }
-      });
+    // ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
 
 
 
-      // Get the Doctors user data
-      app.get('/blog', async (req, res) => {
-          try {
-              const result = await BlogCollection.find().toArray();
-              res.status(200).send(result); // Send a success response with the fetched data
-          } catch (error) {
-              console.error("Error fetching doctors:", error);
-              res.status(500).send({ message: "Failed to fetch doctors", error });
-          }
-      });
+    // SSL Commerz Payment System 
 
+    const tran_ids = new ObjectId().toString();
+  
+    // POST endpoint for order processing
+    app.post('/order', async (req, res) => {
+      try {
+        const { doctorId, userEmail, paymentAmount, appointmentStatus } = req.body;
+    
+        const doctorAppointment = await DoctorsCollection.findOne({ _id: new ObjectId(doctorId) });
+        if (!doctorAppointment) {
+          return res.status(404).json({ message: 'Doctor not found' });
+        }
+    
+       
+    
+        const data = {
+ 
+          total_amount: doctorAppointment.visit,
+          currency: 'BDT',
+          tran_id: tran_ids, // use unique tran_id for each api call
+          success_url: `http://localhost:5000/payment/success/${tran_ids}`,
+          fail_url: `http://localhost:5000/payment/fail/${tran_ids}`,
+          cancel_url: 'http://localhost:3030/cancel',
+          ipn_url: 'http://localhost:3030/ipn',
+          shipping_method: 'Courier',
+          product_name: 'Computer.',
+          product_category: 'Electronic',
+          product_profile: 'general',
+          cus_name: 'Customer Name',
+          cus_email: 'customer@example.com',
+          doctor_name: doctorAppointment.fullName,
+          doctor_specialization: doctorAppointment.specialization,
+          doctor_email: doctorAppointment.userEmail,
+          
+          paitent_email: userEmail,
+          appointment_status: appointmentStatus,
+          cus_add1: 'Dhaka',
+          cus_add2: 'Dhaka',
+          cus_city: 'Dhaka',
+          cus_state: 'Dhaka',
+          cus_postcode: '1000',
+          cus_country: 'Bangladesh',
+          cus_phone: '01711111111',
+          cus_fax: '01711111111',
+          ship_name: 'Customer Name',
+          ship_add1: 'Dhaka',
+          ship_add2: 'Dhaka',
+          ship_city: 'Dhaka',
+          ship_state: 'Dhaka',
+          ship_postcode: 1000,
+          ship_country: 'Bangladesh',
+        };
+    
+        const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+        sslcz.init(data).then((apiResponse) => {
+          let GatewayPageURL = apiResponse?.GatewayPageURL;
+          res.send({ url: GatewayPageURL });
+
+          const finalOrder = {
+            doctorAppointment,doctor_name: doctorAppointment.fullName,
+            doctor_specialization: doctorAppointment.specialization,
+            doctor_visit:doctorAppointment?.visit,
+            doctor_email: doctorAppointment.userEmail,
+            
+            paitent_email: userEmail,
+            appointment_status: appointmentStatus, paidStatus: false,
+            tranjectionId:tran_ids,
+          };
+
+          const result = AppointmentCollection.insertOne(finalOrder);
+
+
+
+        });
+      } catch (error) {
+        console.error('Error processing payment:', error);
+        return res.status(500).json({ message: 'Server error', error });
+      }
+    });
+    
+
+
+
+    app.post("/payment/success/:tranId",async(req,res)=>{
+      console.log(req.params.tranId);
+      const result = await AppointmentCollection.updateOne({tranjectionId:req.params.tranId},
+        {
+          $set:{
+            paidStatus:true,
+          },
+        }
+      );
+
+      if((await result).modifiedCount>0){
+        res.redirect(`http://localhost:5173/payment/success/${req.params.tranId}`)
+      }
       
+    })
 
-      app.get('/blog/:id', async (req, res) => {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
-        const result = await BlogCollection.findOne(query);
-        res.send(result);
-      });
+
+
+
+    app.post('/payment/fail/:tranId',async(req,res)=>{
+      const result = await AppointmentCollection.deleteOne({tranjectionId:req.params.tranId})
+
+      if(result.deletedCount){
+        res.redirect(`http://localhost:5173/payment/fail/${req.params.tranId}`)
+      }
+    })
+
+
+
+    // Get the Doctors user data
+    app.get('/order', async (req, res) => {
+      try {
+        const result = await AppointmentCollection.find().toArray();
+        res.status(200).send(result); // Send a success response with the fetched data
+      } catch (error) {
+        console.error("Error fetching doctors:", error);
+        res.status(500).send({ message: "Failed to fetch doctors", error });
+      }
+    });
 
 
 
@@ -337,6 +505,12 @@ async function run() {
 
 // Run the MongoDB connection
 run().catch(console.dir);
+
+
+app.post('/', (req, res) => {
+  const { name, email, message } = req.body;
+  console.log(name, email, message)
+})
 
 // Define a simple route
 app.get('/', (req, res) => {
